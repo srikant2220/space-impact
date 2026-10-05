@@ -201,7 +201,6 @@ let state = 'menu'; // menu | playing | dead | gameover
 let score = 0, hiScore = 0, lives = 3, level = 1;
 let frame = 0;
 let paused = false;
-let missiles = [];
 
 // ─── Input ───
 const keys = {};
@@ -278,6 +277,8 @@ function makePlayer() {
     shield: 0,
     rapidFire: 0,
     triShot: 0,
+    missileMode: 0,
+missileCooldown: 0,
   };
 }
 
@@ -324,45 +325,8 @@ function drawPlayer(p) {
 }
 
 // ─── Bullets ───
-ctx.fillStyle='#ffaa00';
-ctx.fillRect(m.x,m.y,m.w,m.h);
-function launchMissile()
-{
-    missiles.push({
-        x: player.x + player.w,
-        y: player.y + player.h/2,
-        speed: 3,
-        target: null,
-        w: 10,
-        h: 4
-    });
-}
-missiles.forEach(m=>{
 
-    if(!m.target || m.target.dead)
-        m.target = nearestEnemy(m);
-
-    if(m.target)
-    {
-        let dx = m.target.x - m.x;
-        let dy = m.target.y - m.y;
-
-        let len = Math.hypot(dx,dy);
-
-        m.x += dx/len * m.speed;
-        m.y += dy/len * m.speed;
-    }
-});
-if(rectsOverlap(m,e))
-{
-    e.hp -= 5;
-    m.dead = true;
-
-    explode(m.x,m.y,20,'#ffaa00');
-}
-``
-
-let bullets = [], enemyBullets = [];
+let bullets = [], enemyBullets = [], missiles = [];
 
 function shoot(p) {
   if (p.shootCooldown > 0) return;
@@ -377,6 +341,42 @@ function shoot(p) {
   } else {
     bullets.push({ x: p.x + p.w, y: cy, vy: 0, w: 7, h: 2 });
   }
+}
+
+function launchMissile(p)
+{
+    missiles.push({
+        x: p.x + p.w,
+        y: p.y + p.h / 2,
+
+        w: 10,
+        h: 4,
+
+        speed: 3,
+        target: null
+    });
+}
+
+function findNearestEnemy(m)
+{
+    let nearest = null;
+    let minDist = Infinity;
+
+    enemies.forEach(e => {
+
+        const dx = e.x - m.x;
+        const dy = e.y - m.y;
+
+        const dist = dx * dx + dy * dy;
+
+        if(dist < minDist)
+        {
+            minDist = dist;
+            nearest = e;
+        }
+    });
+
+    return nearest;
 }
 
 function drawBullets() {
@@ -468,27 +468,7 @@ function drawEnemy(e) {
     ctx.fillStyle = '#ffff00';
     ctx.fillRect(x + 4, y + 7, 6, 6);
   }
-  function nearestEnemy(m)
-{
-    let closest = null;
-    let dist = Infinity;
-
-    enemies.forEach(e=>{
-        let d =
-            Math.hypot(
-                e.x - m.x,
-                e.y - m.y
-            );
-
-        if(d < dist)
-        {
-            dist = d;
-            closest = e;
-        }
-    });
-
-    return closest;
-}
+  
   // HP bar
   if (e.maxHp > 1) {
     const bw = e.w, bh = 3;
@@ -503,14 +483,14 @@ function drawEnemy(e) {
 
 // ─── Power-ups ───
 let powerups = [];
-const PU_TYPES = ['rapid', 'triple', 'shield', 'life'];
+const PU_TYPES = ['rapid', 'triple', 'shield', 'life', 'missile'];
 function spawnPowerup(x, y) {
   if (Math.random() > 0.22) return;
   const type = PU_TYPES[Math.floor(Math.random() * PU_TYPES.length)];
   powerups.push({ x, y, type, vy: (Math.random() - 0.5) * 0.6, phase: Math.random() * Math.PI * 2 });
 }
-const PU_COLORS = { rapid: '#ffcc00', triple: '#00eeff', shield: '#88ffcc', life: '#ff3366' };
-const PU_LABELS = { rapid: 'R', triple: 'T', shield: 'S', life: '♥' };
+const PU_COLORS = { rapid: '#ffcc00', triple: '#00eeff', shield: '#88ffcc', life: '#ff3366', missile:'#ffaa00' };
+const PU_LABELS = { rapid: 'R', triple: 'T', shield: 'S', life: '♥', missile:'M' };
 
 function drawPowerup(p) {
   const x = Math.round(p.x), y = Math.round(p.y);
@@ -622,6 +602,32 @@ function playerDied() {
   }
 }
 
+function drawMissiles()
+{
+    missiles.forEach(m => {
+
+        ctx.fillStyle = '#ffaa00';
+
+        ctx.fillRect(
+            Math.round(m.x),
+            Math.round(m.y),
+            m.w,
+            m.h
+        );
+
+        // engine flame
+
+        ctx.fillStyle = '#ff0000';
+
+        ctx.fillRect(
+            Math.round(m.x)-3,
+            Math.round(m.y)+1,
+            3,
+            2
+        );
+    });
+}
+
 function update() {
   frame++;
 
@@ -639,6 +645,19 @@ function update() {
   p.y = Math.max(0, Math.min(H - p.h, p.y));
 
   if (p.shootCooldown > 0) p.shootCooldown--;
+  if (p.missileCooldown > 0)
+    p.missileCooldown--;
+
+if (p.missileMode > 0)
+{
+    p.missileMode--;
+
+    if (p.missileCooldown <= 0)
+    {
+        launchMissile(p);
+        p.missileCooldown = 45;
+    }
+}
   if (keys['Space'] || keys['KeyZ']) shoot(p);
 
   if (p.invincible > 0) p.invincible--;
@@ -679,6 +698,31 @@ function update() {
       });
     }
   });
+
+  missiles = missiles.filter(m => !m.dead);
+
+missiles.forEach(m => {
+
+    if (!m.target || m.target.dead)
+    {
+        m.target = findNearestEnemy(m);
+    }
+
+    if (m.target)
+    {
+        const dx = m.target.x - m.x;
+        const dy = m.target.y - m.y;
+
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        m.x += dx / len * m.speed;
+        m.y += dy / len * m.speed;
+    }
+    else
+    {
+        m.x += m.speed;
+    }
+});
 
   // Power-ups
   powerups = powerups.filter(pu => pu.x > -20);
@@ -721,6 +765,52 @@ function update() {
     });
     enemyBullets = enemyBullets.filter(b => !b.dead);
 
+    missiles.forEach(m => {
+
+    enemies.forEach(e => {
+
+        if(rectsOverlap(m,e))
+        {
+            m.dead = true;
+
+            e.hp -= 5;
+
+            explode(
+                m.x,
+                m.y,
+                12,
+                '#ffaa00'
+            );
+
+            e.hitFlash = 6;
+
+            if(e.hp <= 0)
+            {
+                e.dead = true;
+
+                score += e.score;
+                levelScore += e.score;
+
+                updateHUD();
+
+                explode(
+                    e.x + e.w/2,
+                    e.y + e.h/2,
+                    25,
+                    '#ffaa00'
+                );
+
+                spawnPowerup(
+                    e.x,
+                    e.y + e.h/2
+                );
+            }
+        }
+
+    });
+
+});
+
     // Enemy vs player collision
     if (state === 'playing') {
       enemies.forEach(e => {
@@ -742,6 +832,10 @@ function update() {
       else if (pu.type === 'triple') p.triShot = 300;
       else if (pu.type === 'shield') p.shield = 400;
       else if (pu.type === 'life' && lives < 5) { lives++; updateHUD(); }
+      else if (pu.type === 'missile')
+{
+p.missileMode = 600; // 10 seconds
+}
       explode(pu.x + 7, pu.y + 7, 10, PU_COLORS[pu.type]);
     }
   });
@@ -775,6 +869,7 @@ function draw() {
 
   if (state === 'playing' || state === 'dead' || state === 'gameover') {
     drawBullets();
+    drawMissiles();
     if (state === 'playing') drawPlayer(player);
   }
 
@@ -792,6 +887,11 @@ function draw() {
     drawStatus('RAPID', p.rapidFire, '#ffcc00');
     drawStatus('TRI', p.triShot, '#00eeff');
     drawStatus('SHIELD', p.shield, '#88ffcc');
+    drawStatus(
+    'MISSILE',
+    p.missileMode,
+    '#ffaa00'
+);
   }
 }
 
