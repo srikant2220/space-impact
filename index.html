@@ -201,6 +201,7 @@ let state = 'menu'; // menu | playing | dead | gameover
 let score = 0, hiScore = 0, lives = 3, level = 1;
 let frame = 0;
 let paused = false;
+let missiles = [];
 
 // ─── Input ───
 const keys = {};
@@ -323,6 +324,44 @@ function drawPlayer(p) {
 }
 
 // ─── Bullets ───
+ctx.fillStyle='#ffaa00';
+ctx.fillRect(m.x,m.y,m.w,m.h);
+function launchMissile()
+{
+    missiles.push({
+        x: player.x + player.w,
+        y: player.y + player.h/2,
+        speed: 3,
+        target: null,
+        w: 10,
+        h: 4
+    });
+}
+missiles.forEach(m=>{
+
+    if(!m.target || m.target.dead)
+        m.target = nearestEnemy(m);
+
+    if(m.target)
+    {
+        let dx = m.target.x - m.x;
+        let dy = m.target.y - m.y;
+
+        let len = Math.hypot(dx,dy);
+
+        m.x += dx/len * m.speed;
+        m.y += dy/len * m.speed;
+    }
+});
+if(rectsOverlap(m,e))
+{
+    e.hp -= 5;
+    m.dead = true;
+
+    explode(m.x,m.y,20,'#ffaa00');
+}
+``
+
 let bullets = [], enemyBullets = [];
 
 function shoot(p) {
@@ -429,7 +468,27 @@ function drawEnemy(e) {
     ctx.fillStyle = '#ffff00';
     ctx.fillRect(x + 4, y + 7, 6, 6);
   }
+  function nearestEnemy(m)
+{
+    let closest = null;
+    let dist = Infinity;
 
+    enemies.forEach(e=>{
+        let d =
+            Math.hypot(
+                e.x - m.x,
+                e.y - m.y
+            );
+
+        if(d < dist)
+        {
+            dist = d;
+            closest = e;
+        }
+    });
+
+    return closest;
+}
   // HP bar
   if (e.maxHp > 1) {
     const bw = e.w, bh = 3;
